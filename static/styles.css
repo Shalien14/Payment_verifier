@@ -1,16 +1,24 @@
 :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #16223b; background: #f3f6fb; }
 body { min-height: 100vh; display: grid; place-items: center; margin: 0; }
-.card { width: min(440px, calc(100% - 40px)); padding: 40px; border-radius: 18px; background: #fff; box-shadow: 0 18px 55px #1f3b6d1f; }
+.card { width: min(560px, calc(100% - 40px)); padding: 40px; border-radius: 18px; background: #fff; box-shadow: 0 18px 55px #1f3b6d1f; }
 .eyebrow { color: #465fe3; font-weight: 700; font-size: .75rem; letter-spacing: .12em; margin: 0; }
 h1 { margin: .45rem 0; font-size: 2rem; }
 .intro { color: #536078; line-height: 1.55; }
-form { display: grid; gap: 16px; margin-top: 28px; }
+form { display: grid; gap: 16px; margin-top: 22px; }
+.lookup-form label { font-weight: 700; }.lookup-row { display: flex; gap: 10px; }
+.lookup-row input { display: block; flex: 1; min-width: 0; padding: 13px; border: 1px solid #b6c3e3; border-radius: 10px; font: inherit; }
+.lookup-row button { white-space: nowrap; }
+fieldset { display: grid; gap: 16px; border: 0; padding: 0; margin: 0; min-width: 0; }
+fieldset:disabled { opacity: .5; }
 .dropzone { border: 2px dashed #b6c3e3; border-radius: 12px; padding: 28px 16px; text-align: center; cursor: pointer; color: #465fe3; font-weight: 600; }
 input { display: none; }
 button { border: 0; border-radius: 10px; padding: 14px; background: #3955da; color: white; font: inherit; font-weight: 700; cursor: pointer; }
 #status { min-height: 1.5em; margin: 20px 0 0; }
 .success { color: #087443; }.error { color: #bc263d; }
-#ocr-result { margin-top: 22px; padding: 16px; border-radius: 12px; background: #f3f6ff; }
-#ocr-result h2 { margin: 0 0 10px; font-size: 1.1rem; }
-#ocr-result p { margin: 7px 0; }
+#ocr-result, #order-result, #decision-result { margin-top: 22px; padding: 16px; border-radius: 12px; background: #f3f6ff; }
+#ocr-result h2, #order-result h2, #decision-result h2 { margin: 0 0 10px; font-size: 1.1rem; }
+#ocr-result p, #order-result p, #decision-result p { margin: 7px 0; }
 #ocr-note { color: #536078; font-size: .9rem; }
+#decision-result.approved { background: #e8f7ef; color: #087443; }
+#decision-result.rejected { background: #fff0f2; color: #a02036; }
+#decision-result.needs_review { background: #fff8df; color: #725700; }
