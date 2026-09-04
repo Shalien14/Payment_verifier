@@ -1,4 +1,4 @@
-# BuildStart payment verification MVP
+# payment verification MVP
 
 This first milestone accepts a payment-slip image or PDF, stores the upload in `data/uploads/`, and records basic metadata in SQLite at `data/payments.db`.
 
