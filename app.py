@@ -31,54 +31,108 @@ def add_column_if_missing(connection: sqlite3.Connection, name: str, definition:
 
 
 def extract_payment_details(image_path: Path) -> dict:
-    """Run local OCR and make conservative first-pass extractions from its text."""
+    """Run local OCR with a few receipt-friendly image treatments.
+
+    OCR engines are sensitive to small text, low contrast, and the varied layouts used
+    by banking apps.  We read a small set of conservative variants and merge their
+    output.  The decision logic below still requires every expected field to match.
+    """
     try:
-        from PIL import Image, UnidentifiedImageError
+        from PIL import Image, ImageEnhance, ImageOps, UnidentifiedImageError
         import pytesseract
         with Image.open(image_path) as image:
-            raw_text = pytesseract.image_to_string(image.convert("RGB"))
+            original = image.convert("RGB")
+            grayscale = ImageOps.grayscale(original)
+            enlarged = grayscale.resize(
+                (grayscale.width * 2, grayscale.height * 2), Image.Resampling.LANCZOS
+            )
+            enhanced = ImageEnhance.Contrast(enlarged).enhance(1.8)
+            thresholded = enhanced.point(lambda pixel: 255 if pixel > 175 else 0)
+            variants = (original, enhanced, thresholded)
+            raw_text = "\n".join(
+                pytesseract.image_to_string(variant, config="--psm 6")
+                for variant in variants
+            )
     except ImportError:
-        return {"status": "unavailable", "raw_text": None, "account_number": None, "amount": None,
+        return {"status": "unavailable", "raw_text": None, "account_number": None, "amount": None, "transfer_status": None,
                 "message": "OCR Python packages are not installed yet. Run pip install -r requirements.txt."}
     except pytesseract.TesseractNotFoundError:
-        return {"status": "unavailable", "raw_text": None, "account_number": None, "amount": None,
+        return {"status": "unavailable", "raw_text": None, "account_number": None, "amount": None, "transfer_status": None,
                 "message": "OCR is not installed yet. Install Tesseract, then upload again."}
     except (UnidentifiedImageError, OSError) as error:
-        return {"status": "failed", "raw_text": None, "account_number": None, "amount": None,
+        return {"status": "failed", "raw_text": None, "account_number": None, "amount": None, "transfer_status": None,
                 "message": f"Could not read this image: {error}"}
 
-    account_number, amount = parse_payment_details(raw_text)
-    return {"status": "completed", "raw_text": raw_text, "account_number": account_number, "amount": amount,
+    account_number, amount, transfer_status = parse_payment_details(raw_text)
+    return {"status": "completed", "raw_text": raw_text, "account_number": account_number, "amount": amount, "transfer_status": transfer_status,
             "message": "OCR completed. Confirm these values before approving a payment."}
 
 
-def parse_payment_details(raw_text: str) -> tuple[str | None, str | None]:
-    """Extract a labelled account number and amount from Tesseract text.
+def parse_payment_details(raw_text: str) -> tuple[str | None, str | None, str | None]:
+    """Extract a labelled account number and amount from OCR text.
 
     Payment slips often intentionally mask accounts (for example, XXXXXXXXXXXX0028),
     so an account value is allowed to contain letters as well as digits.
     """
-    account_match = re.search(
-        r"\baccount\s*(?:no\.?|number)\s*[:#-]?\s*([A-Z0-9][A-Z0-9 -]*[A-Z0-9])",
-        raw_text,
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    account_number = None
+    account_pattern = re.compile(
+        r"\b(?:account|a\s*/?\s*c)\s*(?:no\.?|number)?\s*[:#=-]\s*"
+        r"([A-Z0-9*X][A-Z0-9*X -]{2,}[A-Z0-9*X])",
         re.IGNORECASE,
     )
-    account_number = re.sub(r"[ -]", "", account_match.group(1)) if account_match else None
+    beneficiary_accounts: list[str] = []
+    other_accounts: list[str] = []
+    in_beneficiary_section = False
+    for line in lines:
+        if re.search(r"\b(?:beneficiary|recipient|payee)\b", line, re.IGNORECASE):
+            in_beneficiary_section = True
+        match = account_pattern.search(line)
+        if match:
+            candidate = re.sub(r"[\s-]", "", match.group(1)).upper()
+            # Headings such as "Sender A/C Details" are not account values.
+            if len(candidate) >= 4 and re.search(r"[0-9*X]", candidate):
+                (beneficiary_accounts if in_beneficiary_section else other_accounts).append(candidate)
+    if beneficiary_accounts:
+        account_number = beneficiary_accounts[0]
+    elif other_accounts:
+        account_number = other_accounts[0]
 
-    amount_match = re.search(
-        r"\b(?:amount|paid|credited|debited)\s*[:=-]?\s*"
-        r"(?:(rs\.?|inr|gbp|usd|eur|aud|cad|₹|\$|£|€)\s*)?"
+    currency_aliases = {
+        "RS": "INR", "RS.": "INR", "₹": "INR", "$": "USD", "£": "GBP", "€": "EUR",
+    }
+    amount = None
+    amount_pattern = re.compile(
+        r"\b(?:total\s+)?(?:amount(?:\s+paid)?|paid\s+amount|payment(?:\s+amount)?|"
+        r"credited|debited|sent|received)\b"
+        r"[^\d₹$£€A-Z]{0,20}"
+        r"(?:(LKR|INR|GBP|USD|EUR|AUD|CAD|RS\.?|₹|\$|£|€)\s*)?"
         r"([\d,]+(?:\.\d{1,2})?)",
+        re.IGNORECASE,
+    )
+    for line in lines:
+        match = amount_pattern.search(line)
+        if not match:
+            continue
+        currency = (match.group(1) or "").upper()
+        currency = currency_aliases.get(currency, currency)
+        value = match.group(2).replace(",", "")
+        try:
+            # Do not treat IDs, dates, or a bare integer as a payment amount.
+            if Decimal(value) < 0 or ("." not in value and not currency):
+                continue
+        except InvalidOperation:
+            continue
+        amount = f"{currency} {value}".strip()
+        break
+
+    status_match = re.search(
+        r"\b(?:transaction|transfer|payment)\s*status\s*[:#=-]?\s*(SUCCESS|COMPLETED|FAILED|PENDING)\b",
         raw_text,
         re.IGNORECASE,
     )
-    if amount_match:
-        currency = (amount_match.group(1) or "").upper().replace("RS.", "INR")
-        value = amount_match.group(2).replace(",", "")
-        amount = f"{currency} {value}".strip()
-    else:
-        amount = None
-    return account_number, amount
+    transfer_status = status_match.group(1).upper() if status_match else None
+    return account_number, amount, transfer_status
 
 
 def decide_payment(order: sqlite3.Row, ocr: dict) -> tuple[str, str]:
@@ -87,6 +141,8 @@ def decide_payment(order: sqlite3.Row, ocr: dict) -> tuple[str, str]:
         return "NEEDS_REVIEW", "OCR did not complete, so the payment cannot be verified."
     if not ocr["account_number"] or not ocr["amount"]:
         return "NEEDS_REVIEW", "The account number or payment amount could not be read."
+    if ocr["transfer_status"] and ocr["transfer_status"] not in {"SUCCESS", "COMPLETED"}:
+        return "REJECTED", f"The receipt shows a {ocr['transfer_status'].lower()} transfer, not a completed payment."
     if not ocr["account_number"].endswith(BUSINESS_ACCOUNT_ENDING):
         return "REJECTED", f"The payment was not sent to the business account ending {BUSINESS_ACCOUNT_ENDING}."
 
@@ -120,6 +176,7 @@ def initialise_database() -> None:
         add_column_if_missing(connection, "ocr_raw_text", "TEXT")
         add_column_if_missing(connection, "extracted_account_number", "TEXT")
         add_column_if_missing(connection, "extracted_amount", "TEXT")
+        add_column_if_missing(connection, "extracted_transfer_status", "TEXT")
         add_column_if_missing(connection, "order_id", "TEXT")
         add_column_if_missing(connection, "decision", "TEXT")
         add_column_if_missing(connection, "decision_reason", "TEXT")
@@ -205,7 +262,7 @@ async def upload_payment_slip(order_id: str = Form(...), file: UploadFile = File
 
     uploaded_at = datetime.now(timezone.utc).isoformat()
     if file.content_type == "application/pdf":
-        ocr = {"status": "not_supported", "raw_text": None, "account_number": None, "amount": None,
+        ocr = {"status": "not_supported", "raw_text": None, "account_number": None, "amount": None, "transfer_status": None,
                "message": "PDF saved. OCR currently supports image uploads only."}
     else:
         ocr = extract_payment_details(destination)
@@ -216,11 +273,11 @@ async def upload_payment_slip(order_id: str = Form(...), file: UploadFile = File
             INSERT INTO payment_slips
                 (id, original_filename, stored_filename, content_type, size_bytes, uploaded_at,
                  ocr_status, ocr_raw_text, extracted_account_number, extracted_amount,
-                 order_id, decision, decision_reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 extracted_transfer_status, order_id, decision, decision_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (upload_id, file.filename or "unnamed-upload", stored_filename, file.content_type, size_bytes, uploaded_at,
-             ocr["status"], ocr["raw_text"], ocr["account_number"], ocr["amount"], normalised_id,
+             ocr["status"], ocr["raw_text"], ocr["account_number"], ocr["amount"], ocr["transfer_status"], normalised_id,
              decision, decision_reason),
         )
         if decision == "APPROVED":
@@ -248,7 +305,7 @@ async def list_payment_slips() -> list[dict]:
         rows = connection.execute(
             """
             SELECT id, order_id, original_filename, content_type, size_bytes, uploaded_at,
-                   ocr_status, extracted_account_number, extracted_amount, decision, decision_reason
+                   ocr_status, extracted_account_number, extracted_amount, extracted_transfer_status, decision, decision_reason
             FROM payment_slips ORDER BY uploaded_at DESC
             """
         ).fetchall()
