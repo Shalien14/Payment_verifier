@@ -11,7 +11,12 @@ const fileLabel = document.querySelector('#file-label');
 const status = document.querySelector('#status');
 const ocrResult = document.querySelector('#ocr-result');
 const accountNumber = document.querySelector('#account-number');
-const paymentAmount = document.querySelector('#payment-amount');\nconst ocrConfidence = document.querySelector('#ocr-confidence');
+const paymentAmount = document.querySelector('#payment-amount');
+const transactionId = document.querySelector('#transaction-id');
+const transactionDate = document.querySelector('#transaction-date');
+const transferStatus = document.querySelector('#transfer-status');
+const beneficiaryBank = document.querySelector('#beneficiary-bank');
+const ocrConfidence = document.querySelector('#ocr-confidence');
 const ocrNote = document.querySelector('#ocr-note');
 const decisionResult = document.querySelector('#decision-result');
 const decisionTitle = document.querySelector('#decision-title');
@@ -70,7 +75,14 @@ form.addEventListener('submit', async (event) => {
     status.textContent = `Saved ${data.filename} for ${data.order.order_id}.`;
     status.className = 'success';
     accountNumber.textContent = data.ocr.account_number || 'Not found';
-    paymentAmount.textContent = data.ocr.amount || 'Not found';\n    ocrConfidence.textContent = Number.isFinite(data.ocr.confidence)\n      ? `${data.ocr.confidence.toFixed(1)}% (Tesseract estimate, not a verification score)`\n      : 'Unavailable';
+    paymentAmount.textContent = data.ocr.amount || 'Not found';
+    transactionId.textContent = data.ocr.transaction_id || 'Not found';
+    transactionDate.textContent = data.ocr.transaction_date || 'Not found';
+    transferStatus.textContent = data.ocr.transfer_status || 'Not found';
+    beneficiaryBank.textContent = data.ocr.beneficiary_bank || 'Not found';
+    ocrConfidence.textContent = Number.isFinite(data.ocr.confidence)
+      ? `${data.ocr.confidence.toFixed(1)}% (Tesseract estimate, not a verification score)`
+      : 'Unavailable';
     ocrNote.textContent = data.ocr.message;
     ocrResult.hidden = false;
     decisionTitle.textContent = data.decision.replace('_', ' ');

@@ -60,5 +60,42 @@ class DecisionTests(unittest.TestCase):
         self.assertEqual(decision, "NEEDS_REVIEW")
 
 
+    def test_boc_receipt_prefers_beneficiary_account_and_extracts_fields(self):
+        from app import parse_receipt_details
+        text = """Fund Transfer
+Transaction Details
+Transaction Amount : LKR 400.00
+Transaction Date & Time : 06-10-2026 01:44 PM
+Transaction ID : FX10740464500000
+Transaction Status : SUCCESS
+Sender A/C Details
+Account Number : **6193
+Sender's Bank : Bank of Ceylon
+Beneficiary A/C Details
+Account No : 0070804435
+Beneficiary Bank : Bank of Ceylon"""
+        fields = parse_receipt_details(text)
+        self.assertEqual(fields["amount"], "LKR 400.00")
+        self.assertEqual(fields["transaction_id"], "FX10740464500000")
+        self.assertEqual(fields["transfer_status"], "SUCCESS")
+        self.assertEqual(fields["beneficiary_account"], "0070804435")
+        self.assertEqual(fields["beneficiary_bank"], "Bank of Ceylon")
+
+    def test_boc_transfer_to_other_bank(self):
+        from app import parse_receipt_details
+        text = """Transaction Amount : LKR 20,000.00
+Transaction ID : FX11225309700000
+Transaction Status : SUCCESS
+Sender A/C Details
+Account Number : **6193
+Beneficiary A/C Details
+Account No : 118020027668
+Beneficiary Bank : Hatton National Bank"""
+        fields = parse_receipt_details(text)
+        self.assertEqual(fields["amount"], "LKR 20000.00")
+        self.assertEqual(fields["beneficiary_account"], "118020027668")
+        self.assertEqual(fields["beneficiary_bank"], "Hatton National Bank")
+
+
 if __name__ == "__main__":
     unittest.main()

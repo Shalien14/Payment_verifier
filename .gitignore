@@ -1,0 +1,45 @@
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+credentials.json
+token.json
+secrets/
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded payment slips and generated files
+data/uploads/
+uploads/
+outputs/
+
+# Logs
+*.log
+logs/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE settings
+.vscode/
+.idea/
+
+# macOS and Windows files
+.DS_Store
+Thumbs.db

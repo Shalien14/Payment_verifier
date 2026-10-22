@@ -48,3 +48,13 @@ This is an initial improvement, not production-ready payment processing. Before 
 ## Data privacy
 
 The `data/` directory is created at runtime and may contain sensitive uploads and a local SQLite database. Do not commit real payment slips or the database to source control. Use synthetic or redacted slips for tests.
+
+
+## BOC PDF receipt support (v2)
+
+- Text-based PDFs are parsed directly with PyMuPDF, avoiding OCR errors when embedded text is available.
+- BOC receipt fields include transaction amount, transaction ID, transaction date/time, transfer status, beneficiary account, and beneficiary bank.
+- The parser prioritizes the beneficiary account over the sender account.
+- Image uploads continue to use multiple Tesseract preprocessing/configuration passes.
+- Scanned/image-only PDFs render the first page and use the image OCR pipeline as a fallback.
+- A receipt's printed SUCCESS status is not independent confirmation that funds were received.
